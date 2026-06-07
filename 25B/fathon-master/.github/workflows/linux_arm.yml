@@ -1,0 +1,65 @@
+name: Linux aarch64
+
+on:
+  push:
+    branches-ignore:
+      - master
+    tags-ignore:
+      - '**'
+
+jobs:
+  build_wheels:
+    name: Build wheels on ubuntu-latest
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Build wheels
+        uses: pypa/cibuildwheel@v2.16.2
+        env:
+          CIBW_BUILD_VERBOSITY: 1
+          CIBW_TEST_REQUIRES: pytest
+          CIBW_TEST_COMMAND: "pytest {project}/tests"
+          CIBW_BEFORE_ALL: >
+                  yum install -y wget &&
+                  wget ftp://ftp.gnu.org/gnu/gsl/gsl-latest.tar.gz &&
+                  tar -zxvf gsl-latest.tar.gz &&
+                  cd gsl-* &&
+                  ./configure &&
+                  make &&
+                  make install
+          CIBW_BEFORE_BUILD: >
+                  pip3 install --upgrade pip &&
+                  pip3 install Cython &&
+                  pip3 install -r requirements.txt
+          CIBW_BUILD: "cp38-manylinux* cp39-manylinux* cp310-manylinux* cp311-manylinux* cp312-manylinux*"
+          CIBW_SKIP: "*-manylinux_i686"
+          CIBW_ARCHS_LINUX: "aarch64"
+          CIBW_MANYLINUX_X86_64_IMAGE: "manylinux2014"
+          
+      - name: Show files
+        run: ls -lh wheelhouse
+        shell: bash
+
+      - name: Upload wheels
+        shell: bash
+        env:
+                TEST_PYPI_USR: ${{ secrets.TEST_PYPI_USR }}
+                TEST_PYPI_PWD: ${{ secrets.TEST_PYPI_PWD }}
+        run: |
+                pip3 install --upgrade pip
+                pip3 install twine
+                chmod +x upload_test_wheels.sh
+                ./upload_test_wheels.sh
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: Linux_arm64_wheels
+          path: ./wheelhouse/*.whl
+          if-no-files-found: warn
